@@ -30,3 +30,5 @@ cycle.cycle = cycle
 local result, message = pcall(json.encode, cycle)
 print(result, message)
 assert(not result)
+
+print(table.unpack(json.decode("[17,42]")))

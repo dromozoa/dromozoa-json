@@ -18,13 +18,8 @@
 local utf8 = require "dromozoa.utf8"
 
 local concat = table.concat
-local error = error
 local floor = math.floor
 local format = string.format
-local next = next
-local pairs = pairs
-local tostring = tostring
-local type = type
 
 local function is_array(value)
   local m = 0
@@ -42,6 +37,105 @@ local function is_array(value)
   else
     return nil
   end
+end
+
+local function decoder()
+  local self = { _stack = {} }
+
+  function self:decode(value)
+    local i = 1
+    local n = 0
+    local stack = {}
+    local state = {}
+
+    local function find(pattern)
+      local a, b = value:find("^" .. pattern, i)
+      if b == nil then
+        return false
+      else
+        i = b + 1
+        return true
+      end
+    end
+
+    local function push(value)
+      n = n + 1
+      stack[n] = value
+    end
+
+    local function pop()
+      assert(n > 0)
+      local value
+      value, stack[n] = stack[n], nil
+      n = n - 1
+      return value
+    end
+
+    local function top()
+      assert(n > 0)
+      return stack[n]
+    end
+
+    while i <= #value do
+      local j = i
+      if find("[ \t\n\r]+") then
+        -- noop
+      elseif find("%-?0") or find("%-?[1-9]%d*") then
+        find("%.%d*")
+        find("[eE][%+%-]?%d+")
+        print("n", j, i, value:sub(j, i - 1))
+        push(tonumber(value:sub(j, i - 1)))
+      elseif find("\"") then
+        error "unsupported"
+      elseif find("true") then
+        push(true)
+      elseif find("false") then
+        push(false)
+      elseif find("null") then
+        push(nil)
+      elseif find("%[") then
+        push({})
+        state[#state + 1] = "array"
+      elseif find("%]") then
+        assert(state[#state] == "array")
+        local v = pop()
+        local a = top()
+        a[#a + 1] = v -- [FIXME]
+        state[#state] = nil
+      elseif find("{") then
+        push({})
+        state[#state + 1] = "object"
+      elseif find("%:") then
+        assert(state[#state] == "object")
+        assert(type(top()) == "string")
+      elseif find("}") then
+        assert(state[#state] == "object")
+        local v = pop()
+        local n = pop()
+        local o = top()
+        o[n] = v
+        state[#state] = nil
+      elseif find(",") then
+        assert(state[#state])
+        if state[#state] == "array" then
+          local v = pop()
+          local a = top()
+          a[#a + 1] = v -- [FIXME]
+        else
+          local v = pop()
+          local n = pop()
+          local o = top()
+          o[n] = v
+        end
+      else
+        error(string.format("invalid %d:%q", i, value:sub(i)))
+      end
+    end
+    assert(n == 1)
+    return stack[1]
+  end
+
+  return self
 end
 
 local function encoder()
@@ -124,6 +218,11 @@ local function encoder()
   return self
 end
 
+local function decode(value)
+  local decoder = decoder()
+  return decoder:decode(value)
+end
+
 local function encode(value)
   local encoder = encoder()
   encoder:encode(value, 0)
@@ -131,6 +230,7 @@ local function encode(value)
 end
 
 return {
+  decode = decode;
   encode = encode;
   version = function () return "1.0" end;
 }
