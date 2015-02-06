@@ -31,4 +31,5 @@ local result, message = pcall(json.encode, cycle)
 print(result, message)
 assert(not result)
 
-print(table.unpack(json.decode("[17,42]")))
+print(json.decode("3.14"))
+-- print(json.encode(json.decode("[true,false,17,null,42]")))

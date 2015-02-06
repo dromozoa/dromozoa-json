@@ -39,100 +39,164 @@ local function is_array(value)
   end
 end
 
-local function decoder()
-  local self = { _stack = {} }
+local function stack()
+  local self = {
+    _data = {};
+    _size = 0;
+  }
 
-  function self:decode(value)
-    local i = 1
-    local n = 0
-    local stack = {}
-    local state = {}
+  function self:push(value)
+    self._size = self._size + 1
+    self._data[self._size] = value
+  end
 
-    local function find(pattern)
-      local a, b = value:find("^" .. pattern, i)
-      if b == nil then
-        return false
-      else
-        i = b + 1
-        return true
-      end
+  function self:pop()
+    assert(self._size > 0)
+    local value = self._data[self._size]
+    self._size = self._size - 1
+    return value
+  end
+
+  function self:top()
+    assert(self._size > 0)
+    return self._data[self._size]
+  end
+
+  function self:size()
+    return self._size
+  end
+
+  return self
+end
+
+
+local function decoder(s)
+  local self = {
+    _s = s;
+    _i = 1;
+    _stack = stack();
+  }
+
+  function self:match(pattern)
+    local i, j = self._s:find("^" .. pattern, self._i)
+    if j == nil then
+      return false
+    else
+      self._i = j + 1
+      return true
     end
+  end
 
-    local function push(value)
-      n = n + 1
-      stack[n] = value
+  function self:ignore_whitespace()
+    return self:match("[ \t\n\r]+")
+  end
+
+  function self:decode_literal()
+    if self:match("true") then
+      self._stack:push(true)
+    elseif self:match("false") then
+      self._stack:push(false)
+    elseif self:match("null") then
+      self._stack:push(nil)
+    else
+      return false
     end
+    self:ignore_whitespace()
+    return true
+  end
 
-    local function pop()
-      assert(n > 0)
-      local value
-      value, stack[n] = stack[n], nil
-      n = n - 1
-      return value
-    end
-
-    local function top()
-      assert(n > 0)
-      return stack[n]
-    end
-
-    while i <= #value do
-      local j = i
-      if find("[ \t\n\r]+") then
-        -- noop
-      elseif find("%-?0") or find("%-?[1-9]%d*") then
-        find("%.%d*")
-        find("[eE][%+%-]?%d+")
-        print("n", j, i, value:sub(j, i - 1))
-        push(tonumber(value:sub(j, i - 1)))
-      elseif find("\"") then
-        error "unsupported"
-      elseif find("true") then
-        push(true)
-      elseif find("false") then
-        push(false)
-      elseif find("null") then
-        push(nil)
-      elseif find("%[") then
-        push({})
-        state[#state + 1] = "array"
-      elseif find("%]") then
-        assert(state[#state] == "array")
-        local v = pop()
-        local a = top()
-        a[#a + 1] = v -- [FIXME]
-        state[#state] = nil
-      elseif find("{") then
-        push({})
-        state[#state + 1] = "object"
-      elseif find("%:") then
-        assert(state[#state] == "object")
-        assert(type(top()) == "string")
-      elseif find("}") then
-        assert(state[#state] == "object")
-        local v = pop()
-        local n = pop()
-        local o = top()
-        o[n] = v
-        state[#state] = nil
-      elseif find(",") then
-        assert(state[#state])
-        if state[#state] == "array" then
-          local v = pop()
-          local a = top()
-          a[#a + 1] = v -- [FIXME]
+  function self:decode_object()
+    if self:match("{") then
+      self._stack:push({})
+      while self._i < #self._s do
+        self:ignore_whitespace()
+        assert(self:decode_string())
+        self:ignore_whitespace()
+        assert(self:match(":"))
+        self:ignore_whitespace()
+        assert(self:decode_value())
+        self:ignore_whitespace()
+        if self:match(",") then
+          local v = self._stack:pop()
+          local n = self._stack:pop()
+          local t = self._stack:top()
+          t[n] = v
+        elseif self:match("}") then
+          local v = self._stack:pop()
+          local n = self._stack:pop()
+          local t = self._stack:top()
+          t[n] = v
+          return true
         else
-          local v = pop()
-          local n = pop()
-          local o = top()
-          o[n] = v
+          error "invalid"
         end
-      else
-        error(string.format("invalid %d:%q", i, value:sub(i)))
       end
+      error "invalid"
+    else
+      return false
     end
-    assert(n == 1)
-    return stack[1]
+  end
+
+  function self:decode_array()
+    if self:match("%[") then
+      self._stack:push({})
+      local i = 1
+      while self._i < #self._s do
+        self:ignore_whitespace()
+        assert(self:decode_value())
+        self:ignore_whitespace()
+        if self:match(",") then
+          local v = self._stack:pop()
+          local t = self._stack:top()
+          t[i] = v
+          i = i + 1
+        elseif self:match("%]") then
+          local v = self._stack:pop()
+          local t = self._stack:top()
+          t[i] = v
+          i = i + 1
+          return true
+        else
+          error "invalid"
+        end
+      end
+      error "invalid"
+    else
+      return false
+    end
+  end
+
+  function self:decode_number()
+    local i = self._i
+    if self:match("%-?0") or self:match("%-?[1-9]%d*") then
+      self:match("%.%d*")
+      self:match("[eE][%+%-]?%d+")
+      self._stack:push(tonumber(self._s:sub(i, self._i - 1)))
+      return true
+    else
+      return false
+    end
+  end
+
+  function self:decode_string()
+    return false
+    -- error "not implemented"
+  end
+
+  function self:decode_value()
+    self:ignore_whitespace()
+    if self:decode_literal() then
+    elseif self:decode_object() then
+    elseif self:decode_array() then
+    elseif self:decode_number() then
+    elseif self:decode_string() then
+    else error("invalid " .. self._i) end
+    return true
+  end
+
+  function self:top()
+    assert(self._stack:size() == 1)
+    return self._stack:top()
   end
 
   return self
@@ -218,9 +282,10 @@ local function encoder()
   return self
 end
 
-local function decode(value)
-  local decoder = decoder()
-  return decoder:decode(value)
+local function decode(s)
+  local decoder = decoder(s)
+  decoder:decode_value()
+  return decoder:top()
 end
 
 local function encode(value)
