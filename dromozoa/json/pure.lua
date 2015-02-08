@@ -77,90 +77,112 @@ local function decoder(s)
     _stack = stack();
   }
 
-  function self:match(pattern)
-    local i, j = self._s:find("^" .. pattern, self._i)
+  function self:scan(pattern)
+    local i, j, a, b = self._s:find("^" .. pattern, self._i)
     if j == nil then
       return false
     else
       self._i = j + 1
+      self._1 = a
+      self._2 = b
       return true
     end
   end
 
-  function self:ignore_whitespace()
-    return self:match("[ \t\n\r]+")
+  function self:scan_whitespace()
+    return self:scan("^[ \t\n\r]+")
   end
 
-  function self:decode_literal()
-    if self:match("true") then
-      self._stack:push(true)
-    elseif self:match("false") then
-      self._stack:push(false)
-    elseif self:match("null") then
-      self._stack:push(nil)
+  function self:decode_value()
+    self:scan_whitespace()
+    if self:decode_literal()
+    or self:decode_object()
+    or self:decode_array()
+    or self:decode_number()
+    or self:decode_string() then
+      return true
     else
       return false
     end
-    self:ignore_whitespace()
-    return true
+  end
+
+  function self:decode_literal()
+    if self:scan("true") then
+      self._stack:push(true)
+      return true
+    elseif self:scan("false") then
+      self._stack:push(false)
+      return true
+    elseif self:scan("null") then
+      self._stack:push(nil)
+      return true
+    else
+      return false
+    end
   end
 
   function self:decode_object()
-    if self:match("{") then
+    if self:scan("{") then
       self._stack:push({})
+      self:scan_whitespace()
+      if self:scan("}") then
+        return true
+      end
       while self._i < #self._s do
-        self:ignore_whitespace()
-        assert(self:decode_string())
-        self:ignore_whitespace()
-        assert(self:match(":"))
-        self:ignore_whitespace()
-        assert(self:decode_value())
-        self:ignore_whitespace()
-        if self:match(",") then
-          local v = self._stack:pop()
-          local n = self._stack:pop()
-          local t = self._stack:top()
-          t[n] = v
-        elseif self:match("}") then
-          local v = self._stack:pop()
-          local n = self._stack:pop()
-          local t = self._stack:top()
-          t[n] = v
+        self:scan_whitespace()
+        if not self:decode_string() then
+          error "could not decode"
+        end
+        self:scan_whitespace()
+        if not self:scan(":") then
+          error "could not decode"
+        end
+        self:scan_whitespace()
+        if not self:decode_value() then
+          error "could not decode"
+        end
+        self:scan_whitespace()
+        if not self:scan("([,}])") then
+          error "could not decode"
+        end
+        local v = self._stack:pop()
+        local n = self._stack:pop()
+        self._stack:top()[n] = v
+        if self._1 == "}" then
           return true
-        else
-          error "invalid"
         end
       end
-      error "invalid"
+      error "could not decode"
     else
       return false
     end
   end
 
   function self:decode_array()
-    if self:match("%[") then
+    if self:scan("%[") then
       self._stack:push({})
+      self:scan_whitespace()
+      if self:scan("%]") then
+        return true
+      end
       local i = 1
-      while self._i < #self._s do
-        self:ignore_whitespace()
-        assert(self:decode_value())
-        self:ignore_whitespace()
-        if self:match(",") then
-          local v = self._stack:pop()
-          local t = self._stack:top()
-          t[i] = v
-          i = i + 1
-        elseif self:match("%]") then
-          local v = self._stack:pop()
-          local t = self._stack:top()
-          t[i] = v
-          i = i + 1
+      while self._i <= #self._s do
+        self:scan_whitespace()
+        if not self:decode_value() then
+          error "could not decode"
+        end
+        self:scan_whitespace()
+        if not self:scan("([,%]])") then
+          error "could not decode"
+        end
+        local v = self._stack:pop()
+        self._stack:top()[i] = v
+        i = i + 1
+        if self._1 == "]" then
           return true
-        else
-          error "invalid"
         end
       end
-      error "invalid"
+      error "could not decode"
     else
       return false
     end
@@ -168,9 +190,9 @@ local function decoder(s)
 
   function self:decode_number()
     local i = self._i
-    if self:match("%-?0") or self:match("%-?[1-9]%d*") then
-      self:match("%.%d*")
-      self:match("[eE][%+%-]?%d+")
+    if self:scan("%-?0") or self:scan("%-?[1-9]%d*") then
+      self:scan("%.%d*")
+      self:scan("[eE][%+%-]?%d+")
       self._stack:push(tonumber(self._s:sub(i, self._i - 1)))
       return true
     else
@@ -179,19 +201,35 @@ local function decoder(s)
   end
 
   function self:decode_string()
-    return false
-    -- error "not implemented"
-  end
-
-  function self:decode_value()
-    self:ignore_whitespace()
-    if self:decode_literal() then
-    elseif self:decode_object() then
-    elseif self:decode_array() then
-    elseif self:decode_number() then
-    elseif self:decode_string() then
-    else error("invalid " .. self._i) end
-    return true
+    if self:scan([["]]) then
+      local buffer = {}
+      while self._i <= #self._s do
+        if self:scan([[([^"\]+)]]) then
+          buffer[#buffer + 1] = self._1
+        end
+        if self:scan([["]]) then
+          self._stack:push(concat(buffer))
+          return true
+        elseif self:scan([[\(["\/])]]) then buffer[#buffer + 1] = self._1
+        elseif self:scan([[\b]]) then buffer[#buffer + 1] = "\b"
+        elseif self:scan([[\f]]) then buffer[#buffer + 1] = "\f"
+        elseif self:scan([[\n]]) then buffer[#buffer + 1] = "\n"
+        elseif self:scan([[\r]]) then buffer[#buffer + 1] = "\r"
+        elseif self:scan([[\t]]) then buffer[#buffer + 1] = "\t"
+        elseif self:scan([[\u([Dd][89ABab]%x%x)\u([Dd][C-Fc-f]%x%x)]]) then
+          local a = tonumber(self._1, 16) % 0x0400 * 0x0400
+          local b = tonumber(self._2, 16) % 0x0400
+          buffer[#buffer + 1] = utf8.char(a + b + 0x010000)
+        elseif self:scan([[\u(%x%x%x%x)]]) then
+          buffer[#buffer + 1] = utf8.char(tonumber(self._1, 16))
+        else
+          error("decode error " .. self._i)
+        end
+      end
+      return true
+    else
+      return false
+    end
   end
 
   function self:top()
