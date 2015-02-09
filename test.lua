@@ -1,5 +1,3 @@
-#! /usr/bin/env lua
-
 local json = require "dromozoa.json.pure"
 
 local function test(a, b)
