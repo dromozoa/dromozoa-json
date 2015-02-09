@@ -39,6 +39,100 @@ local function is_array(value)
   end
 end
 
+local function encoder()
+  local self = {
+    _buffer = {};
+  }
+
+  function self:write(value)
+    local buffer = self._buffer
+    buffer[#buffer + 1] = value
+  end
+
+  function self:encode_string(value)
+    local buffer = self._buffer
+    buffer[#buffer + 1] = [["]]
+    for p, c in utf8.codes(tostring(value)) do
+      if c == 0x22 then
+        buffer[#buffer + 1] = [[\"]]
+      elseif c == 0x5C then
+        buffer[#buffer + 1] = [[\\]]
+      elseif c == 0x2F then
+        buffer[#buffer + 1] = [[\/]]
+      elseif c == 0x08 then
+        buffer[#buffer + 1] = [[\b]]
+      elseif c == 0x0C then
+        buffer[#buffer + 1] = [[\f]]
+      elseif c == 0x0A then
+        buffer[#buffer + 1] = [[\n]]
+      elseif c == 0x0D then
+        buffer[#buffer + 1] = [[\r]]
+      elseif c == 0x09 then
+        buffer[#buffer + 1] = [[\t]]
+      elseif c < 0x20 then
+        buffer[#buffer + 1] = format([[\u%04X]], c)
+      else
+        buffer[#buffer + 1] = utf8.char(c)
+      end
+    end
+    buffer[#buffer + 1] = [["]]
+  end
+
+  function self:encode_value(value, depth)
+    if depth > 16 then
+      error "too much recursion"
+    end
+
+    local t = type(value)
+    if t == "number" then
+      self:write(format("%.17g", value))
+    elseif t == "string" then
+      self:encode_string(value)
+    elseif t == "boolean" then
+      if value then
+        self:write("true")
+      else
+        self:write("false")
+      end
+    elseif t == "table" then
+      local n = is_array(value)
+      if n == nil then
+        self:write("{")
+        local k, v = next(value)
+        self:encode_string(k)
+        self:write(":")
+        self:encode_value(v, depth + 1)
+        for k, v in next, value, k do
+          self:write(",")
+          self:encode_string(k)
+          self:write(":")
+          self:encode_value(v, depth + 1)
+        end
+        self:write("}")
+      elseif n == 0 then
+        self:write("[]")
+      else
+        self:write("[")
+        self:encode_value(value[1], depth + 1)
+        for i = 2, n do
+          self:write(",")
+          self:encode_value(value[i], depth + 1)
+        end
+        self:write("]")
+      end
+    else
+      self:write("null")
+    end
+  end
+
+  function self:encode(value)
+    self:encode_value(value, 0)
+    return concat(self._buffer)
+  end
+
+  return self
+end
+
 local function stack()
   local self = {
     _data = {};
@@ -255,106 +349,12 @@ local function decoder(s)
   return self
 end
 
-local function encoder()
-  local self = {
-    _buffer = {};
-  }
-
-  function self:write(value)
-    local buffer = self._buffer
-    buffer[#buffer + 1] = value
-  end
-
-  function self:encode_string(value)
-    local buffer = self._buffer
-    buffer[#buffer + 1] = [["]]
-    for p, c in utf8.codes(tostring(value)) do
-      if c == 0x22 then
-        buffer[#buffer + 1] = [[\"]]
-      elseif c == 0x5C then
-        buffer[#buffer + 1] = [[\\]]
-      elseif c == 0x2F then
-        buffer[#buffer + 1] = [[\/]]
-      elseif c == 0x08 then
-        buffer[#buffer + 1] = [[\b]]
-      elseif c == 0x0C then
-        buffer[#buffer + 1] = [[\f]]
-      elseif c == 0x0A then
-        buffer[#buffer + 1] = [[\n]]
-      elseif c == 0x0D then
-        buffer[#buffer + 1] = [[\r]]
-      elseif c == 0x09 then
-        buffer[#buffer + 1] = [[\t]]
-      elseif c < 0x20 then
-        buffer[#buffer + 1] = format([[\u%04X]], c)
-      else
-        buffer[#buffer + 1] = utf8.char(c)
-      end
-    end
-    buffer[#buffer + 1] = [["]]
-  end
-
-  function self:encode_value(value, depth)
-    if depth > 16 then
-      error "too much recursion"
-    end
-
-    local t = type(value)
-    if t == "number" then
-      self:write(format("%.17g", value))
-    elseif t == "string" then
-      self:encode_string(value)
-    elseif t == "boolean" then
-      if value then
-        self:write("true")
-      else
-        self:write("false")
-      end
-    elseif t == "table" then
-      local n = is_array(value)
-      if n == nil then
-        self:write("{")
-        local k, v = next(value)
-        self:encode_string(k)
-        self:write(":")
-        self:encode_value(v, depth + 1)
-        for k, v in next, value, k do
-          self:write(",")
-          self:encode_string(k)
-          self:write(":")
-          self:encode_value(v, depth + 1)
-        end
-        self:write("}")
-      elseif n == 0 then
-        self:write("[]")
-      else
-        self:write("[")
-        self:encode_value(value[1], depth + 1)
-        for i = 2, n do
-          self:write(",")
-          self:encode_value(value[i], depth + 1)
-        end
-        self:write("]")
-      end
-    else
-      self:write("null")
-    end
-  end
-
-  function self:encode(value)
-    self:encode_value(value, 0)
-    return concat(self._buffer)
-  end
-
-  return self
+local function encode(value)
+  return encoder():encode(value)
 end
 
 local function decode(s)
   return decoder(s):decode()
-end
-
-local function encode(value)
-  return encoder():encode(value)
 end
 
 return {
