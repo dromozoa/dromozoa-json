@@ -90,7 +90,21 @@ local function decoder(s)
   end
 
   function self:scan_whitespace()
-    return self:scan("^[ \t\n\r]+")
+    return self:scan("[ \t\n\r]+")
+  end
+
+  function self:die()
+    error("decode error at position " .. self._i)
+  end
+
+  function self:decode()
+    self:decode_value()
+    self:scan_whitespace()
+    if self._stack:size() == 1 and self._i == #self._s + 1 then
+      return self._stack:top()
+    else
+      self:die()
+    end
   end
 
   function self:decode_value()
@@ -131,19 +145,19 @@ local function decoder(s)
       while self._i < #self._s do
         self:scan_whitespace()
         if not self:decode_string() then
-          error "could not decode"
+          self:die()
         end
         self:scan_whitespace()
         if not self:scan(":") then
-          error "could not decode"
+          self:die()
         end
         self:scan_whitespace()
         if not self:decode_value() then
-          error "could not decode"
+          self:die()
         end
         self:scan_whitespace()
         if not self:scan("([,}])") then
-          error "could not decode"
+          self:die()
         end
         local v = self._stack:pop()
         local n = self._stack:pop()
@@ -152,7 +166,7 @@ local function decoder(s)
           return true
         end
       end
-      error "could not decode"
+      self:die()
     else
       return false
     end
@@ -169,11 +183,11 @@ local function decoder(s)
       while self._i <= #self._s do
         self:scan_whitespace()
         if not self:decode_value() then
-          error "could not decode"
+          self:die()
         end
         self:scan_whitespace()
         if not self:scan("([,%]])") then
-          error "could not decode"
+          self:die()
         end
         local v = self._stack:pop()
         self._stack:top()[i] = v
@@ -182,7 +196,7 @@ local function decoder(s)
           return true
         end
       end
-      error "could not decode"
+      self:die()
     else
       return false
     end
@@ -210,12 +224,18 @@ local function decoder(s)
         if self:scan([["]]) then
           self._stack:push(concat(buffer))
           return true
-        elseif self:scan([[\(["\/])]]) then buffer[#buffer + 1] = self._1
-        elseif self:scan([[\b]]) then buffer[#buffer + 1] = "\b"
-        elseif self:scan([[\f]]) then buffer[#buffer + 1] = "\f"
-        elseif self:scan([[\n]]) then buffer[#buffer + 1] = "\n"
-        elseif self:scan([[\r]]) then buffer[#buffer + 1] = "\r"
-        elseif self:scan([[\t]]) then buffer[#buffer + 1] = "\t"
+        elseif self:scan([[\(["\/])]]) then
+          buffer[#buffer + 1] = self._1
+        elseif self:scan([[\b]]) then
+          buffer[#buffer + 1] = "\b"
+        elseif self:scan([[\f]]) then
+          buffer[#buffer + 1] = "\f"
+        elseif self:scan([[\n]]) then
+          buffer[#buffer + 1] = "\n"
+        elseif self:scan([[\r]]) then
+          buffer[#buffer + 1] = "\r"
+        elseif self:scan([[\t]]) then
+          buffer[#buffer + 1] = "\t"
         elseif self:scan([[\u([Dd][89ABab]%x%x)\u([Dd][C-Fc-f]%x%x)]]) then
           local a = tonumber(self._1, 16) % 0x0400 * 0x0400
           local b = tonumber(self._2, 16) % 0x0400
@@ -223,7 +243,7 @@ local function decoder(s)
         elseif self:scan([[\u(%x%x%x%x)]]) then
           buffer[#buffer + 1] = utf8.char(tonumber(self._1, 16))
         else
-          error("decode error " .. self._i)
+          self:die()
         end
       end
       return true
@@ -232,41 +252,49 @@ local function decoder(s)
     end
   end
 
-  function self:top()
-    assert(self._stack:size() == 1)
-    return self._stack:top()
-  end
-
   return self
 end
 
 local function encoder()
-  local self = { _buffer = {} }
+  local self = {
+    _buffer = {};
+  }
 
   function self:write(value)
     local buffer = self._buffer
     buffer[#buffer + 1] = value
   end
 
-  function self:quote(value)
+  function self:encode_string(value)
     local buffer = self._buffer
     buffer[#buffer + 1] = [["]]
     for p, c in utf8.codes(tostring(value)) do
-      if c == 0x22 then buffer[#buffer + 1] = [[\"]]
-      elseif c == 0x5C then buffer[#buffer + 1] = [[\\]]
-      elseif c == 0x2F then buffer[#buffer + 1] = [[\/]]
-      elseif c == 0x08 then buffer[#buffer + 1] = [[\b]]
-      elseif c == 0x0C then buffer[#buffer + 1] = [[\f]]
-      elseif c == 0x0A then buffer[#buffer + 1] = [[\n]]
-      elseif c == 0x0D then buffer[#buffer + 1] = [[\r]]
-      elseif c == 0x09 then buffer[#buffer + 1] = [[\t]]
-      elseif c < 0x20 then buffer[#buffer + 1] = format([[\u%04X]], c)
-      else buffer[#buffer + 1] = utf8.char(c) end
+      if c == 0x22 then
+        buffer[#buffer + 1] = [[\"]]
+      elseif c == 0x5C then
+        buffer[#buffer + 1] = [[\\]]
+      elseif c == 0x2F then
+        buffer[#buffer + 1] = [[\/]]
+      elseif c == 0x08 then
+        buffer[#buffer + 1] = [[\b]]
+      elseif c == 0x0C then
+        buffer[#buffer + 1] = [[\f]]
+      elseif c == 0x0A then
+        buffer[#buffer + 1] = [[\n]]
+      elseif c == 0x0D then
+        buffer[#buffer + 1] = [[\r]]
+      elseif c == 0x09 then
+        buffer[#buffer + 1] = [[\t]]
+      elseif c < 0x20 then
+        buffer[#buffer + 1] = format([[\u%04X]], c)
+      else
+        buffer[#buffer + 1] = utf8.char(c)
+      end
     end
     buffer[#buffer + 1] = [["]]
   end
 
-  function self:encode(value, depth)
+  function self:encode_value(value, depth)
     if depth > 16 then
       error "too much recursion"
     end
@@ -275,7 +303,7 @@ local function encoder()
     if t == "number" then
       self:write(format("%.17g", value))
     elseif t == "string" then
-      self:quote(value)
+      self:encode_string(value)
     elseif t == "boolean" then
       if value then
         self:write("true")
@@ -287,24 +315,24 @@ local function encoder()
       if n == nil then
         self:write("{")
         local k, v = next(value)
-        self:quote(k)
+        self:encode_string(k)
         self:write(":")
-        self:encode(v, depth + 1)
+        self:encode_value(v, depth + 1)
         for k, v in next, value, k do
           self:write(",")
-          self:quote(k)
+          self:encode_string(k)
           self:write(":")
-          self:encode(v, depth + 1)
+          self:encode_value(v, depth + 1)
         end
         self:write("}")
       elseif n == 0 then
         self:write("[]")
       else
         self:write("[")
-        self:encode(value[1], depth + 1)
+        self:encode_value(value[1], depth + 1)
         for i = 2, n do
           self:write(",")
-          self:encode(value[i], depth + 1)
+          self:encode_value(value[i], depth + 1)
         end
         self:write("]")
       end
@@ -313,23 +341,20 @@ local function encoder()
     end
   end
 
-  function self:buffer()
-    return self._buffer
+  function self:encode(value)
+    self:encode_value(value, 0)
+    return concat(self._buffer)
   end
 
   return self
 end
 
 local function decode(s)
-  local decoder = decoder(s)
-  decoder:decode_value()
-  return decoder:top()
+  return decoder(s):decode()
 end
 
 local function encode(value)
-  local encoder = encoder()
-  encoder:encode(value, 0)
-  return concat(encoder:buffer())
+  return encoder():encode(value)
 end
 
 return {
