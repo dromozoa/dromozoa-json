@@ -1,5 +1,5 @@
 -- This file was auto-generated.
-package.loaded["dromozoa/json/pure.lua"] = (function ()
+package.loaded["dromozoa.json.pure"] = (function ()
 -- ===========================================================================
 -- dromozoa.json.pure
 -- ===========================================================================
@@ -369,7 +369,7 @@ return {
 }
 -- ===========================================================================
 end)()
-package.loaded["dromozoa/json.lua"] = (function ()
+package.loaded["dromozoa.json"] = (function ()
 -- ===========================================================================
 -- dromozoa.json
 -- ===========================================================================
