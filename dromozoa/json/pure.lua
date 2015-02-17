@@ -342,5 +342,4 @@ end
 return {
   decode = decode;
   encode = encode;
-  version = function () return "1.0" end;
 }
