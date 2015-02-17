@@ -101,7 +101,7 @@ return function (path)
 
   function self:evaluate(root, n)
     local token = self._token
-    local v = root
+    local v = root[1]
     for i = 1, n do
       if type(v) == "table" then
         local key = token[i]
@@ -143,7 +143,9 @@ return function (path)
     local token = self._token
     local n = #token
     if n == 0 then
-      return true, value, root
+      local save = root[1]
+      root[1] = value
+      return true, save
     end
     local r, v = self:evaluate(root, n - 1)
     if type(v) == "table" then
@@ -152,15 +154,15 @@ return function (path)
       if size == nil then
         local save = v[key]
         v[key] = value
-        return true, root, save
+        return true, save
       elseif size == 0 then
         if key == "-" or key == "0" then
           v[1] = value
-          return true, root
+          return true
         else
           local save = v[key]
           v[key] = value
-          return true, root, save
+          return true, save
         end
       else
         local index
@@ -174,7 +176,7 @@ return function (path)
             v[i + 1] = v[i]
           end
           v[index] = value
-          return true, root
+          return true
         else
           return false
         end
@@ -188,7 +190,9 @@ return function (path)
     local token = self._token
     local n = #token
     if n == 0 then
-      return true, nil, root
+      local save = root[1]
+      root[1] = nil
+      return true, save
     end
     local r, v = self:evaluate(root, n - 1)
     if type(v) == "table" then
@@ -200,7 +204,7 @@ return function (path)
           return false
         end
         v[key] = nil
-        return true, root, save
+        return true, save
       else
         local index = array_index(key)
         if 1 <= index and index <= size then
@@ -209,7 +213,7 @@ return function (path)
             v[i] = v[i + 1]
           end
           v[size] = nil
-          return true, root, save
+          return true, save
         else
           return false
         end
@@ -220,7 +224,7 @@ return function (path)
   end
 
   function self:replace(root, value)
-    local result, root = self:remove(root)
+    local result = self:remove(root)
     if result then
       return self:add(root, value)
     else
@@ -229,7 +233,7 @@ return function (path)
   end
 
   function self:move(root, from)
-    local result, root, value = from:remove(root)
+    local result, value = from:remove(root)
     if result then
       local a, b = self:add(root, value)
       if not a then

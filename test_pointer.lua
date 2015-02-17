@@ -42,24 +42,23 @@ local data = {
 
 for i = 1, #data do
   local v = data[i]
-  local a, b = pointer(v[1]):get(v[2])
+  local a, b = pointer(v[1]):get({ v[2] })
   assert(a == v[3])
   assert(b == v[4])
 end
 
 -- RFC 6902 - A.8. Testing a Value: Success
-local root = { baz = "qux"; foo = { "a", 2, "c" } }
-assert(pointer("/baz"):test(root, "qux"))
-assert(pointer("/foo/1"):test(root, 2))
+assert(pointer("/baz"):test({ { baz = "qux"; foo = { "a", 2, "c" } } }, "qux"))
+assert(pointer("/foo/1"):test({ { baz = "qux"; foo = { "a", 2, "c" } } }, 2))
 
 -- RFC 6902 - A.9. Testing a Value: Error
-assert(not pointer("/baz"):test({ baz = "qux" }, "bar"))
+assert(not pointer("/baz"):test({ { baz = "qux" } }, "bar"))
 
 -- RFC 6902 - A.14. ~ Escape Ordering
-assert(pointer("/~01"):test({ ["/"] = 9; ["~1"] = 10 }, 10))
+assert(pointer("/~01"):test({ { ["/"] = 9; ["~1"] = 10 } }, 10))
 
 -- RFC 6902 - A.15. Comparing Strings and Numbers
-assert(not pointer("/~01"):test({ ["/"] = 9; ["~1"] = 10 }, "10"))
+assert(not pointer("/~01"):test({ { ["/"] = 9; ["~1"] = 10 } }, "10"))
 
 local data = {
   { "", { foo = 17 }, 23, true, 23 };
@@ -101,12 +100,14 @@ local data = {
 
 for i = 1, #data do
   local v = data[i]
-  local a, b = pointer(v[1]):add(v[2], v[3])
+  local root = { v[2] }
+
+  local result = pointer(v[1]):add(root, v[3])
   if v[4] then
-    assert(a)
-    assert(pointer(""):test(b, v[5]))
+    assert(result)
+    assert(pointer(""):test(root, v[5]))
   else
-    assert(not a)
+    assert(not result)
   end
 end
 
@@ -131,23 +132,25 @@ local data = {
 
 for i = 1, #data do
   local v = data[i]
-  local a, b, c = pointer(v[1]):remove(v[2])
+  local root = { v[2] }
+  local result, save = pointer(v[1]):remove(root)
   if v[3] then
-    assert(a)
-    assert(pointer(""):test(b, v[4]))
-    assert(pointer(""):test(c, v[5]))
+    assert(result)
+    assert(pointer(""):test(root, v[4]))
+    assert(pointer(""):test({ save }, v[5]))
   else
-    assert(not a)
+    assert(not result)
   end
 end
 
 -- RFC 6902 - A.5. Replacing a Value
-local a, b = pointer("/baz"):replace({ baz = "qux"; foo = "bar" }, "boo")
+local root = { { baz = "qux"; foo = "bar" } }
+local a, b = pointer("/baz"):replace(root, "boo")
 assert(a)
-assert(pointer(""):test(b, { baz = "boo"; foo = "bar" }))
+assert(pointer(""):test(root, { baz = "boo"; foo = "bar" }))
 
 -- RFC 6902 - A.6. Moving a Value
-local a, b = pointer("/qux/thud"):move({
+local root = { {
   foo = {
     bar = "baz";
     waldo = "fred";
@@ -155,9 +158,10 @@ local a, b = pointer("/qux/thud"):move({
   qux = {
     corge = "grault";
   };
-}, pointer("/foo/waldo"))
+} }
+local a = pointer("/qux/thud"):move(root, pointer("/foo/waldo"))
 assert(a)
-assert(pointer(""):test(b, {
+assert(pointer(""):test(root, {
   foo = {
     bar = "baz";
   };
@@ -168,30 +172,32 @@ assert(pointer(""):test(b, {
 }))
 
 -- RFC 6902 - A.7. Moving an Array Element
-local a, b = pointer("/foo/3"):move({
+local root = { {
   foo = { "all", "grass", "cows", "eat" };
-}, pointer("/foo/1"))
+} }
+local a = pointer("/foo/3"):move(root, pointer("/foo/1"))
 assert(a)
-assert(pointer(""):test(b, {
+assert(pointer(""):test(root, {
   foo = { "all", "cows", "eat", "grass" };
 }))
 
-local root = { a = { b = { c = 17 } } }
+local root = { { a = { b = { c = 17 } } } }
 local a, b = pointer("/a/b/c"):move(root, pointer("/a/b"))
 assert(not a)
 assert(pointer(""):test(root, { a = { b = { c = 17 } } }))
 
-local root = { a = { b = { c = 17 } } }
+local root = { { a = { b = { c = 17 } } } }
 local a, b = pointer("/a/b/c"):copy(root, pointer("/a/b"))
 assert(a)
 assert((pcall(function () json.encode(root) end)))
 
 local cycle = {}
 cycle.cycle = cycle
-local result, message = pcall(function () pointer(""):test(cycle, cycle) end)
+local result, message = pcall(function () pointer(""):test({ cycle }, cycle) end)
 assert(not result)
 assert(message:match("too much recursion"))
 
-local a, b = pointer("/bar"):copy({ foo = 17 }, pointer(""))
+local root = { { foo = 17 } }
+local a = pointer("/bar"):copy(root, pointer(""))
 assert(a)
-assert(pointer(""):test(b, { foo = 17; bar = { foo = 17 } }))
+assert(pointer(""):test(root, { foo = 17; bar = { foo = 17 } }))
