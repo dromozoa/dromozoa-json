@@ -2,16 +2,16 @@ local json = require "dromozoa.json"
 local pointer = require "dromozoa.json.pointer"
 
 local root = {
-  foo = { "bar"; "baz" };
-  [""] = 0;
-  ["a/b"] = 1;
-  ["c%d"] = 2;
-  ["e^f"] = 3;
-  ["g|h"] = 4;
-  ["i\\j"] = 5;
-  ["k\"l"] = 6;
-  [" "] = 7;
-  ["m~n"] = 8;
+  [ [[foo]] ] = { "bar", "baz" };
+  [ [[]]    ] = 0;
+  [ [[a/b]] ] = 1;
+  [ [[c%d]] ] = 2;
+  [ [[e^f]] ] = 3;
+  [ [[g|h]] ] = 4;
+  [ [[i\j]] ] = 5;
+  [ [[k"l]] ] = 6;
+  [ [[ ]]   ] = 7;
+  [ [[m~n]] ] = 8;
 }
 
 local data = {
@@ -26,39 +26,48 @@ local data = {
   { "/3", { 17, nil, 23 }, false, nil};
 
   -- RFC 6901 - 5. JSON String Representation
-  { "",       root, true, root };
-  { "/foo",   root, true, root.foo };
-  { "/foo/0", root, true, "bar" };
-  { "/",      root, true, 0 };
-  { "/a~1b",  root, true, 1 };
-  { "/c%d",   root, true, 2 };
-  { "/e^f",   root, true, 3 };
-  { "/g|h",   root, true, 4 };
-  { "/i\\j",  root, true, 5 };
-  { "/k\"l",  root, true, 6 };
-  { "/ ",     root, true, 7 };
-  { "/m~0n",  root, true, 8 };
+  { [[]],       root, true, root };
+  { [[/foo]],   root, true, root.foo };
+  { [[/foo/0]], root, true, "bar" };
+  { [[/]],      root, true, 0 };
+  { [[/a~1b]],  root, true, 1 };
+  { [[/c%d]],   root, true, 2 };
+  { [[/e^f]],   root, true, 3 };
+  { [[/g|h]],   root, true, 4 };
+  { [[/i\j]],   root, true, 5 };
+  { [[/k"l]],   root, true, 6 };
+  { [[/ ]],     root, true, 7 };
+  { [[/m~0n]],  root, true, 8 };
 }
 
 for i = 1, #data do
   local v = data[i]
-  local a, b = pointer(v[1]):get({ v[2] })
+  local doc = { v[2] }
+  local a, b = pointer(v[1]):get(doc)
   assert(a == v[3])
   assert(b == v[4])
 end
 
 -- RFC 6902 - A.8. Testing a Value: Success
-assert(pointer("/baz"):test({ { baz = "qux"; foo = { "a", 2, "c" } } }, "qux"))
-assert(pointer("/foo/1"):test({ { baz = "qux"; foo = { "a", 2, "c" } } }, 2))
+local root = { baz = "qux"; foo = { "a", 2, "c" } }
+local doc = { root }
+assert(pointer("/baz"):test(doc, "qux"))
+assert(pointer("/foo/1"):test(doc, 2))
 
 -- RFC 6902 - A.9. Testing a Value: Error
-assert(not pointer("/baz"):test({ { baz = "qux" } }, "bar"))
+local root = { baz = "qux" }
+local doc = { root }
+assert(not pointer("/baz"):test(doc, "bar"))
 
 -- RFC 6902 - A.14. ~ Escape Ordering
-assert(pointer("/~01"):test({ { ["/"] = 9; ["~1"] = 10 } }, 10))
+local root = { ["/"] = 9; ["~1"] = 10 }
+local doc = { root }
+assert(pointer("/~01"):test(doc, 10))
 
 -- RFC 6902 - A.15. Comparing Strings and Numbers
-assert(not pointer("/~01"):test({ { ["/"] = 9; ["~1"] = 10 } }, "10"))
+local root = { ["/"] = 9; ["~1"] = 10 }
+local doc = { root }
+assert(not pointer("/~01"):test(doc, "10"))
 
 local data = {
   { "", { foo = 17 }, 23, true, 23 };
@@ -100,14 +109,13 @@ local data = {
 
 for i = 1, #data do
   local v = data[i]
-  local root = { v[2] }
-
-  local result = pointer(v[1]):add(root, v[3])
+  local doc = { v[2] }
+  local a, b = pointer(v[1]):add(doc, v[3])
   if v[4] then
-    assert(result)
-    assert(pointer(""):test(root, v[5]))
+    assert(a)
+    assert(pointer(""):test(doc, v[5]))
   else
-    assert(not result)
+    assert(not a)
   end
 end
 
@@ -132,25 +140,25 @@ local data = {
 
 for i = 1, #data do
   local v = data[i]
-  local root = { v[2] }
-  local result, save = pointer(v[1]):remove(root)
+  local doc = { v[2] }
+  local a, b = pointer(v[1]):remove(doc)
   if v[3] then
-    assert(result)
-    assert(pointer(""):test(root, v[4]))
-    assert(pointer(""):test({ save }, v[5]))
+    assert(a)
+    assert(pointer(""):test(doc, v[4]))
+    assert(pointer(""):test({ b }, v[5]))
   else
-    assert(not result)
+    assert(not a)
   end
 end
 
 -- RFC 6902 - A.5. Replacing a Value
-local root = { { baz = "qux"; foo = "bar" } }
-local a, b = pointer("/baz"):replace(root, "boo")
-assert(a)
-assert(pointer(""):test(root, { baz = "boo"; foo = "bar" }))
+local root = { baz = "qux"; foo = "bar" }
+local doc = { root }
+assert(pointer("/baz"):replace(doc, "boo"))
+assert(pointer(""):test(doc, { baz = "boo"; foo = "bar" }))
 
 -- RFC 6902 - A.6. Moving a Value
-local root = { {
+local root = {
   foo = {
     bar = "baz";
     waldo = "fred";
@@ -158,10 +166,10 @@ local root = { {
   qux = {
     corge = "grault";
   };
-} }
-local a = pointer("/qux/thud"):move(root, pointer("/foo/waldo"))
-assert(a)
-assert(pointer(""):test(root, {
+}
+local doc = { root }
+assert(pointer("/qux/thud"):move(doc, pointer("/foo/waldo")))
+assert(pointer(""):test(doc, {
   foo = {
     bar = "baz";
   };
@@ -172,37 +180,34 @@ assert(pointer(""):test(root, {
 }))
 
 -- RFC 6902 - A.7. Moving an Array Element
-local root = { {
-  foo = { "all", "grass", "cows", "eat" };
-} }
-local a = pointer("/foo/3"):move(root, pointer("/foo/1"))
-assert(a)
-assert(pointer(""):test(root, {
-  foo = { "all", "cows", "eat", "grass" };
-}))
+local root = { foo = { "all", "grass", "cows", "eat" } }
+local doc = { root }
+assert(pointer("/foo/3"):move(doc, pointer("/foo/1")))
+assert(pointer(""):test(doc, { foo = { "all", "cows", "eat", "grass" } }))
 
-local root = { { a = { b = { c = 17 } } } }
-local a, b = pointer("/a/b/c"):move(root, pointer("/a/b"))
-assert(not a)
-assert(pointer(""):test(root, { a = { b = { c = 17 } } }))
+local root = { a = { b = { c = 17 } } }
+local doc = { root }
+assert(not pointer("/a/b/c"):move(root, pointer("/a/b")))
+assert(pointer(""):test(doc, { a = { b = { c = 17 } } }))
 
-local root = { { a = { b = { c = 17 } } } }
-local a, b = pointer("/a/b/c"):copy(root, pointer("/a/b"))
-assert(a)
-assert((pcall(function () json.encode(root) end)))
+local root = { a = { b = { c = 17 } } }
+local doc = { root }
+assert(pointer("/a/b/c"):copy(doc, pointer("/a/b")))
+assert(pcall(json.encode, doc[1]))
 
-local cycle = {}
-cycle.cycle = cycle
+local root = {}
+root.foo = root
+local doc = { root }
 
-local result, message = pcall(function () pointer(""):test({ cycle }, cycle) end)
+local result, message = pcall(function () pointer(""):test(doc, doc[1]) end)
 assert(not result)
 assert(message:match("too much recursion"))
 
-local result, message = pcall(function () pointer("/cycle2"):copy({ cycle }, pointer("/cycle")) end)
+local result, message = pcall(function () pointer("/bar"):copy(doc, pointer("/foo")) end)
 assert(not result)
 assert(message:match("too much recursion"))
 
-local root = { { foo = 17 } }
-local a = pointer("/bar"):copy(root, pointer(""))
-assert(a)
-assert(pointer(""):test(root, { foo = 17; bar = { foo = 17 } }))
+local root = { foo = 17 }
+local doc = { root }
+assert(pointer("/bar"):copy(doc, pointer("")))
+assert(pointer(""):test(doc, { foo = 17; bar = { foo = 17 } }))

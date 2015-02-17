@@ -81,7 +81,6 @@ local function copy(value, depth)
   if depth > 16 then
     error "too much recursion"
   end
-
   if type(value) == "table" then
     local result = {}
     for k, v in pairs(value) do
@@ -97,7 +96,6 @@ local function test(x, y, depth)
   if depth > 16 then
     error "too much recursion"
   end
-
   local t = type(x)
   if t == type(y) then
     if t == "table" then
