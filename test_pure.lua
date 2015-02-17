@@ -33,8 +33,8 @@ test({ foo = { bar = { baz = 42 } } }, [[{"foo":{"bar":{"baz":42}}}]])
 local cycle = {}
 cycle.cycle = cycle
 local result, message = pcall(json.encode, cycle)
-print(result, message)
 assert(not result)
+assert(message:match("too much recursion"))
 
 assert(json.decode([["Z" ]]) == "Z")
 assert(json.decode([[ "Z" ]]) == "Z")
@@ -44,11 +44,9 @@ assert(json.decode([["\uD84C\uDFB4"]]) == string.char(0xF0, 0xA3, 0x8E, 0xB4))
 assert(json.decode([["\ud84c\udfB4"]]) == string.char(0xF0, 0xA3, 0x8E, 0xB4))
 
 local result, message = pcall(json.decode, "[[[[")
-print(result, message)
 assert(not result)
 
 local result, message = pcall(json.decode, "[] []")
-print(result, message)
 assert(not result)
 
 assert(json.encode(json.decode([[ { "foo" : [ "bar" , 42 ] } ]])) == [[{"foo":["bar",42]}]])
