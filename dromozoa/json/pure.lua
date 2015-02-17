@@ -15,29 +15,11 @@
 -- You should have received a copy of the GNU General Public License
 -- along with dromozoa-json.  If not, see <http://www.gnu.org/licenses/>.
 
+local is_array = require "dromozoa.json.is_array"
 local utf8 = require "dromozoa.utf8"
 
 local concat = table.concat
-local floor = math.floor
 local format = string.format
-
-local function is_array(value)
-  local m = 0
-  local n = 0
-  for k, v in pairs(value) do
-    if type(k) == "number" and k > 0 and floor(k) == k then
-      if m < k then m = k end
-      n = n + 1
-    else
-      return nil
-    end
-  end
-  if m <= n * 2 then
-    return m
-  else
-    return nil
-  end
-end
 
 local function encoder()
   local self = {
@@ -95,8 +77,8 @@ local function encoder()
         self:write("false")
       end
     elseif t == "table" then
-      local n = is_array(value)
-      if n == nil then
+      local size = is_array(value)
+      if size == nil then
         self:write("{")
         local k, v = next(value)
         self:encode_string(k)
@@ -109,12 +91,12 @@ local function encoder()
           self:encode_value(v, depth + 1)
         end
         self:write("}")
-      elseif n == 0 then
+      elseif size == 0 then
         self:write("[]")
       else
         self:write("[")
         self:encode_value(value[1], depth + 1)
-        for i = 2, n do
+        for i = 2, size do
           self:write(",")
           self:encode_value(value[i], depth + 1)
         end
@@ -360,5 +342,4 @@ end
 return {
   decode = decode;
   encode = encode;
-  version = function () return "1.0" end;
 }
