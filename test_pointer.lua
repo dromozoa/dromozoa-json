@@ -102,8 +102,6 @@ local data = {
 for i = 1, #data do
   local v = data[i]
   local a, b = pointer(v[1]):add(v[2], v[3])
-  print(json.encode(v))
-  print(a, json.encode(b), json.encode(v[5]))
   if v[4] then
     assert(a)
     assert(pointer(""):test(b, v[5]))
@@ -112,3 +110,73 @@ for i = 1, #data do
   end
 end
 
+local data = {
+  { "", { foo = 17 }, true, nil, { foo = 17 } };
+  { "/foo", { foo = 17 }, true, {}, 17 };
+  { "/bar", { foo = 17 }, false };
+  { "/-", {}, false };
+  { "/0", {}, false };
+  { "/-", { 17, nil, 23 }, false };
+  { "/0", { 17, nil, 23 }, true, { nil, 23 }, 17 };
+  { "/1", { 17, nil, 23 }, true, { 17, 23 }, nil };
+  { "/2", { 17, nil, 23 }, true, { 17 }, 23 };
+  { "/3", { 17, nil, 23 }, false };
+
+  -- RFC 6902 - A.3. Removing an Object Member
+  { "/baz", { baz = "qux"; foo = "bar" }, true, { foo = "bar" }, "qux" };
+
+  -- RFC 6902 - A.4. Removing an Array Element
+  { "/foo/1", { foo = { "bar", "qux", "baz" } }, true, { foo = { "bar", "baz" } }, "qux" };
+}
+
+for i = 1, #data do
+  local v = data[i]
+  local a, b, c = pointer(v[1]):remove(v[2])
+  if v[3] then
+    assert(a)
+    assert(pointer(""):test(b, v[4]))
+    assert(pointer(""):test(c, v[5]))
+  else
+    assert(not a)
+  end
+end
+
+-- RFC 6902 - A.5. Replacing a Value
+local a, b = pointer("/baz"):replace({ baz = "qux"; foo = "bar" }, "boo")
+assert(a)
+assert(pointer(""):test(b, { baz = "boo"; foo = "bar" }))
+
+-- RFC 6902 - A.6. Moving a Value
+local a, b = pointer("/qux/thud"):move({
+  foo = {
+    bar = "baz";
+    waldo = "fred";
+  };
+  qux = {
+    corge = "grault";
+  };
+}, pointer("/foo/waldo"))
+assert(a)
+assert(pointer(""):test(b, {
+  foo = {
+    bar = "baz";
+  };
+  qux = {
+    corge = "grault";
+    thud = "fred";
+  };
+}))
+
+-- RFC 6902 - A.7. Moving an Array Element
+local a, b = pointer("/foo/3"):move({
+  foo = { "all", "grass", "cows", "eat" };
+}, pointer("/foo/1"))
+assert(a)
+assert(pointer(""):test(b, {
+  foo = { "all", "cows", "eat", "grass" };
+}))
+
+local root = { a = { b = { c = 17 } } }
+local a, b = pointer("/a/b/c"):move(root, pointer("/a/b"))
+assert(not a)
+assert(pointer(""):test(root, { a = { b = { c = 17 } } }))

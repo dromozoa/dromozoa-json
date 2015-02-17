@@ -27,13 +27,6 @@ local function array_index(key)
   end
 end
 
-local function array_insert(a, n, i, v)
-  for j = n, i, -1 do
-    a[j + 1] = a[j]
-  end
-  a[i] = v
-end
-
 local function array_remove(a, n, i)
   for j = i, n - 1 do
     array[j] = array[j + 1]
@@ -63,6 +56,19 @@ local function parse(path)
       result[#result + 1] = i:gsub("~.", decode)
     end
     return result
+  end
+end
+
+local function copy(v)
+  local t = type(v)
+  if t == "table" then
+    local result = {}
+    for k, v in pairs(v) do
+      result[k] = v
+    end
+    return result
+  else
+    return v
   end
 end
 
@@ -153,10 +159,12 @@ return function (path)
       elseif size == 0 then
         if key == "-" or key == "0" then
           v[1] = value
+          return true, root
         else
+          local save = v[key]
           v[key] = value
+          return true, root, save
         end
-        return true, root
       else
         local index
         if key == "-" then
@@ -165,37 +173,83 @@ return function (path)
           index = array_index(key)
         end
         if 1 <= index and index <= size + 1 then
-          array_insert(v, size, index, value)
+          for i = size, index, -1 do
+            v[i + 1] = v[i]
+          end
+          v[index] = value
           return true, root
-        end
-      end
-    end
-    return false
-  end
-
-  function self:remove(root)
-    local m = #self._token
-    if m == 0 then
-      return false
-    end
-    local object = self:evaluate(root, m - 1)
-    if type(object) == "table" then
-      local key = self._token[m]
-      local n = is_array(object)
-      if n == nil then
-        object[key] = nil
-        return true
-      elseif n == 0 then
-        return false
-      else
-        local index = tonumber(index)
-        if index ~= nil and 0 <= index and index < n then
-          table.remove(object, index + 1)
-          return true
+        else
+          return false
         end
       end
     else
       return false
+    end
+  end
+
+  function self:remove(root)
+    local token = self._token
+    local n = #token
+    if n == 0 then
+      return true, nil, root
+    end
+    local r, v = self:evaluate(root, n - 1)
+    if type(v) == "table" then
+      local key = self._token[n]
+      local size = is_array(v)
+      if size == nil then
+        local save = v[key]
+        if save == nil then
+          return false
+        end
+        v[key] = nil
+        return true, root, save
+      else
+        local index = array_index(key)
+        if 1 <= index and index <= size then
+          local save = v[index]
+          for i = index, size - 1 do
+            v[i] = v[i + 1]
+          end
+          v[size] = nil
+          return true, root, save
+        else
+          return false
+        end
+      end
+    else
+      return false
+    end
+  end
+
+  function self:replace(root, value)
+    local result, root = self:remove(root)
+    if result then
+      return self:add(root, value)
+    else
+      return false
+    end
+  end
+
+  function self:move(root, from)
+    local result, root, value = from:remove(root)
+    if result then
+      local a, b = self:add(root, value)
+      if not a then
+        assert((from:add(root, value)))
+        return false
+      end
+      return a, b
+    else
+      return false
+    end
+  end
+
+  function self:copy(root, from)
+    local result, value = from:get(root)
+    if result then
+      return self:add(root, copy(value))
+    else
     end
   end
 
