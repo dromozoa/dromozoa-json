@@ -27,13 +27,6 @@ local function array_index(key)
   end
 end
 
-local function array_remove(a, n, i)
-  for j = i, n - 1 do
-    array[j] = array[j + 1]
-  end
-  array[n] = nil
-end
-
 local function decode(v)
   if v == "~0" then
     return "~"
@@ -72,7 +65,11 @@ local function copy(v)
   end
 end
 
-local function test(a, b)
+local function test(a, b, depth)
+  if depth > 16 then
+    error "too much recursion"
+  end
+
   local t = type(a)
   if t == type(b) then
     if t == "table" then
@@ -84,7 +81,7 @@ local function test(a, b)
       end
       for k, v in pairs(b) do
         local u = a[k]
-        if u == nil or not test(u, v) then
+        if u == nil or not test(u, v, depth + 1) then
           return false
         end
       end
@@ -136,7 +133,7 @@ return function (path)
   function self:test(root, value)
     local r, v = self:get(root)
     if r then
-      return test(v, value)
+      return test(v, value, 0)
     else
       return false
     end

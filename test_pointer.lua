@@ -180,3 +180,18 @@ local root = { a = { b = { c = 17 } } }
 local a, b = pointer("/a/b/c"):move(root, pointer("/a/b"))
 assert(not a)
 assert(pointer(""):test(root, { a = { b = { c = 17 } } }))
+
+local root = { a = { b = { c = 17 } } }
+local a, b = pointer("/a/b/c"):copy(root, pointer("/a/b"))
+assert(a)
+assert((pcall(function () json.encode(root) end)))
+
+local cycle = {}
+cycle.cycle = cycle
+local result, message = pcall(function () pointer(""):test(cycle, cycle) end)
+assert(not result)
+assert(message:match("too much recursion"))
+
+local a, b = pointer("/bar"):copy({ foo = 17 }, pointer(""))
+assert(a)
+assert(pointer(""):test(b, { foo = 17; bar = { foo = 17 } }))
