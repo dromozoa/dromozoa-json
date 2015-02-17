@@ -193,7 +193,12 @@ assert((pcall(function () json.encode(root) end)))
 
 local cycle = {}
 cycle.cycle = cycle
+
 local result, message = pcall(function () pointer(""):test({ cycle }, cycle) end)
+assert(not result)
+assert(message:match("too much recursion"))
+
+local result, message = pcall(function () pointer("/cycle2"):copy({ cycle }, pointer("/cycle")) end)
 assert(not result)
 assert(message:match("too much recursion"))
 

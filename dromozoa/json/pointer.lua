@@ -17,7 +17,7 @@
 
 local is_array = require "dromozoa.json.is_array"
 
-local function array_index(key)
+local function key_to_index(key)
   if key == "0" then
     return 1
   elseif key:match("^[1-9]%d*$") then
@@ -27,22 +27,22 @@ local function array_index(key)
   end
 end
 
-local function decode(v)
-  if v == "~0" then
+local function decode(escaped)
+  if escaped == "~0" then
     return "~"
-  elseif v == "~1" then
+  elseif escaped == "~1" then
     return "/"
   else
     error "could not decode"
   end
 end
 
-local function parse(path)
+local function tokenize(path)
   if #path == 0 then
     return {}
   else
     if not path:match("^/") then
-      error "could not parse"
+      error "could not tokenize"
     end
     local result = {}
     for i in path:gmatch("/([^/]*)") do
@@ -52,42 +52,68 @@ local function parse(path)
   end
 end
 
-local function copy(v)
-  local t = type(v)
-  if t == "table" then
-    local result = {}
-    for k, v in pairs(v) do
-      result[k] = v
+function evaluate(doc, token, n)
+  local value = doc[1]
+  for i = 1, n do
+    if type(value) == "table" then
+      local size = is_array(value)
+      if size == nil then
+        value = value[token[i]]
+        if value == nil then
+          return false
+        end
+      else
+        local index = key_to_index(token[i])
+        if 1 <= index and index <= size then
+          value = value[index]
+        else
+          return false
+        end
+      end
+    else
+      return false
     end
-    return result
-  else
-    return v
   end
+  return true, value
 end
 
-local function test(a, b, depth)
+local function copy(value, depth)
   if depth > 16 then
     error "too much recursion"
   end
 
-  local t = type(a)
-  if t == type(b) then
+  if type(value) == "table" then
+    local result = {}
+    for k, v in pairs(value) do
+      result[k] = copy(v, depth + 1)
+    end
+    return result
+  else
+    return value
+  end
+end
+
+local function test(x, y, depth)
+  if depth > 16 then
+    error "too much recursion"
+  end
+
+  local t = type(x)
+  if t == type(y) then
     if t == "table" then
-      for k, v in pairs(a) do
-        local u = b[k]
-        if u == nil then
+      for k, v in pairs(x) do
+        if not test(v, y[k], depth + 1) then
           return false
         end
       end
-      for k, v in pairs(b) do
-        local u = a[k]
-        if u == nil or not test(u, v, depth + 1) then
+      for k, v in pairs(y) do
+        if x[k] == nil then
           return false
         end
       end
       return true
     else
-      return a == b
+      return x == y
     end
   else
     return false
@@ -96,86 +122,48 @@ end
 
 return function (path)
   local self = {
-    _token = parse(path);
+    _token = tokenize(path);
   }
 
-  function self:evaluate(root, n)
+  function self:get(doc)
     local token = self._token
-    local v = root[1]
-    for i = 1, n do
-      if type(v) == "table" then
-        local key = token[i]
-        local size = is_array(v)
-        if size == nil then
-          v = v[key]
-          if v == nil then
-            return false
-          end
-        else
-          local index = array_index(key)
-          if 1 <= index and index <= size then
-            v = v[index]
-          else
-            return false
-          end
-        end
-      else
-        return false
-      end
-    end
-    return true, v
+    return evaluate(doc, token, #token)
   end
 
-  function self:get(root)
-    return self:evaluate(root, #self._token)
-  end
-
-  function self:test(root, value)
-    local r, v = self:get(root)
-    if r then
-      return test(v, value, 0)
-    else
-      return false
-    end
-  end
-
-  function self:add(root, value)
+  function self:add(doc, value)
     local token = self._token
     local n = #token
     if n == 0 then
-      local save = root[1]
-      root[1] = value
-      return true, save
+      doc[1], value = value, doc[1]
+      return true, value
     end
-    local r, v = self:evaluate(root, n - 1)
-    if type(v) == "table" then
+    local a, b = evaluate(doc, token, n - 1)
+    if a and type(b) == "table" then
       local key = self._token[n]
-      local size = is_array(v)
+      local size = is_array(b)
       if size == nil then
-        local save = v[key]
-        v[key] = value
-        return true, save
+        b[key], value = value, b[key]
+        return true, value
       elseif size == 0 then
         if key == "-" or key == "0" then
-          v[1] = value
+          b[1] = value
           return true
         else
-          local save = v[key]
-          v[key] = value
-          return true, save
+          b[key], value = value, b[key]
+          return true, value
         end
       else
         local index
         if key == "-" then
           index = size + 1
         else
-          index = array_index(key)
+          index = key_to_index(key)
         end
         if 1 <= index and index <= size + 1 then
           for i = size, index, -1 do
-            v[i + 1] = v[i]
+            b[i + 1] = b[i]
           end
-          v[index] = value
+          b[index] = value
           return true
         else
           return false
@@ -186,34 +174,34 @@ return function (path)
     end
   end
 
-  function self:remove(root)
+  function self:remove(doc)
     local token = self._token
     local n = #token
     if n == 0 then
-      local save = root[1]
-      root[1] = nil
-      return true, save
+      local value = doc[1]
+      doc[1] = nil
+      return true, value
     end
-    local r, v = self:evaluate(root, n - 1)
-    if type(v) == "table" then
+    local a, b = evaluate(doc, token, n - 1)
+    if type(b) == "table" then
       local key = self._token[n]
-      local size = is_array(v)
+      local size = is_array(b)
       if size == nil then
-        local save = v[key]
-        if save == nil then
+        local value = b[key]
+        if value == nil then
           return false
         end
-        v[key] = nil
-        return true, save
+        b[key] = nil
+        return true, value
       else
-        local index = array_index(key)
+        local index = key_to_index(key)
         if 1 <= index and index <= size then
-          local save = v[index]
+          local value = b[index]
           for i = index, size - 1 do
-            v[i] = v[i + 1]
+            b[i] = b[i + 1]
           end
-          v[size] = nil
-          return true, save
+          b[size] = nil
+          return true, value
         else
           return false
         end
@@ -223,34 +211,52 @@ return function (path)
     end
   end
 
-  function self:replace(root, value)
-    local result = self:remove(root)
-    if result then
-      return self:add(root, value)
-    else
-      return false
-    end
-  end
-
-  function self:move(root, from)
-    local result, value = from:remove(root)
-    if result then
-      local a, b = self:add(root, value)
-      if not a then
-        assert((from:add(root, value)))
+  function self:replace(doc, value)
+    local a, b = self:remove(doc)
+    if a then
+      local c, d = self:add(doc, value)
+      if c then
+        assert(d == nil)
+        return true, b
+      else
+        assert((from:add(doc, b)))
         return false
       end
-      return a, b
     else
       return false
     end
   end
 
-  function self:copy(root, from)
-    local result, value = from:get(root)
-    if result then
-      return self:add(root, copy(value))
+  function self:move(doc, from)
+    local a, b = from:remove(doc)
+    if a then
+      local c, d = self:add(doc, b)
+      if c then
+        return true, d
+      else
+        assert((from:add(doc, b)))
+        return false
+      end
     else
+      return false
+    end
+  end
+
+  function self:copy(doc, from)
+    local a, b = from:get(doc)
+    if a then
+      return self:add(doc, copy(b, 0))
+    else
+      return false
+    end
+  end
+
+  function self:test(doc, value)
+    local a, b = self:get(doc)
+    if a then
+      return test(b, value, 0)
+    else
+      return false
     end
   end
 
