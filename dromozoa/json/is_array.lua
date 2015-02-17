@@ -17,10 +17,10 @@
 
 local floor = math.floor
 
-return function (value)
+return function (t)
   local m = 0
   local n = 0
-  for k, v in pairs(value) do
+  for k, v in pairs(t) do
     if type(k) == "number" and k > 0 and floor(k) == k then
       if m < k then m = k end
       n = n + 1

@@ -77,8 +77,8 @@ local function encoder()
         self:write("false")
       end
     elseif t == "table" then
-      local n = is_array(value)
-      if n == nil then
+      local size = is_array(value)
+      if size == nil then
         self:write("{")
         local k, v = next(value)
         self:encode_string(k)
@@ -91,12 +91,12 @@ local function encoder()
           self:encode_value(v, depth + 1)
         end
         self:write("}")
-      elseif n == 0 then
+      elseif size == 0 then
         self:write("[]")
       else
         self:write("[")
         self:encode_value(value[1], depth + 1)
-        for i = 2, n do
+        for i = 2, size do
           self:write(",")
           self:encode_value(value[i], depth + 1)
         end

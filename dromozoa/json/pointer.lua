@@ -17,10 +17,34 @@
 
 local is_array = require "dromozoa.json.is_array"
 
-local function decode(value)
-  if value == "~0" then
+local function array_index(key)
+  if key == "0" then
+    return 1
+  elseif key:match("^[1-9]%d*$") then
+    return tonumber(key) + 1
+  else
+    return 0
+  end
+end
+
+local function array_insert(a, n, i, v)
+  for j = n, i, -1 do
+    a[j + 1] = a[j]
+  end
+  a[i] = v
+end
+
+local function array_remove(a, n, i)
+  for j = i, n - 1 do
+    array[j] = array[j + 1]
+  end
+  array[n] = nil
+end
+
+local function decode(v)
+  if v == "~0" then
     return "~"
-  elseif value == "~1" then
+  elseif v == "~1" then
     return "/"
   else
     error "could not decode"
@@ -42,22 +66,29 @@ local function parse(path)
   end
 end
 
-local function evaluate(object, key)
-  if type(object) == "table" then
-    local n = is_array(object)
-    if n == nil then
-      local v = object[key]
-      if v ~= nil then
-        return true, v
+local function test(a, b)
+  local t = type(a)
+  if t == type(b) then
+    if t == "table" then
+      for k, v in pairs(a) do
+        local u = b[k]
+        if u == nil then
+          return false
+        end
       end
+      for k, v in pairs(b) do
+        local u = a[k]
+        if u == nil or not test(u, v) then
+          return false
+        end
+      end
+      return true
     else
-      local index = tonumber(key)
-      if index ~= nil and 0 <= index and index < n then
-        return true, object[index + 1]
-      end
+      return a == b
     end
+  else
+    return false
   end
-  return false
 end
 
 return function (path)
@@ -66,54 +97,80 @@ return function (path)
   }
 
   function self:evaluate(root, n)
-    local result = true
-    local object = root
+    local token = self._token
+    local v = root
     for i = 1, n do
-      result, object = evaluate(object, self._token[i])
-      if not result then
+      if type(v) == "table" then
+        local key = token[i]
+        local size = is_array(v)
+        if size == nil then
+          v = v[key]
+          if v == nil then
+            return false
+          end
+        else
+          local index = array_index(key)
+          if 1 <= index and index <= size then
+            v = v[index]
+          else
+            return false
+          end
+        end
+      else
         return false
       end
     end
-    return result, object
+    return true, v
   end
 
   function self:get(root)
     return self:evaluate(root, #self._token)
   end
 
-  function self:add(root, value)
-    local m = #self._token
-    if m == 0 then
-      return true, value
+  function self:test(root, value)
+    local r, v = self:get(root)
+    if r then
+      return test(v, value)
+    else
+      return false
     end
-    local object = self:evaluate(root, m - 1)
-    if type(object) == "table" then
-      local key = self._token[m]
-      local n = is_array(object)
-      if n == nil then
-        object[key] = value
-        return true, root
-      elseif n == 0 then
+  end
+
+  function self:add(root, value)
+    local token = self._token
+    local n = #token
+    if n == 0 then
+      return true, value, root
+    end
+    local r, v = self:evaluate(root, n - 1)
+    if type(v) == "table" then
+      local key = self._token[n]
+      local size = is_array(v)
+      if size == nil then
+        local save = v[key]
+        v[key] = value
+        return true, root, save
+      elseif size == 0 then
         if key == "-" or key == "0" then
-          object[1] = value
-          return true, root
+          v[1] = value
         else
-          object[key] = value
-          return true, root
+          v[key] = value
         end
+        return true, root
       else
+        local index
         if key == "-" then
-          object[#object + 1] = value
-          return true, root
+          index = size + 1
         else
-          local index = tonumber(key)
-          if index ~= nil and 0 <= index and index < n then
-            table.insert(object, index + 1, value)
-            return true, root
-          end
+          index = array_index(key)
+        end
+        if 1 <= index and index <= size + 1 then
+          array_insert(v, size, index, value)
+          return true, root
         end
       end
     end
+    return false
   end
 
   function self:remove(root)

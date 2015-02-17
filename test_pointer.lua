@@ -1,4 +1,5 @@
 local json = require "dromozoa.json"
+local pointer = require "dromozoa.json.pointer"
 
 local root = {
   foo = { "bar"; "baz" };
@@ -13,60 +14,101 @@ local root = {
   ["m~n"] = 8;
 }
 
-local function test_get(a, b)
-  local result, object = json.pointer(a):get(root)
-  assert(a)
-  assert(object == b)
+local data = {
+  { "",   nil, true,  nil };
+  { "/",  nil, false, nil };
+  { "//", nil, false, nil };
+  { "/",  {},  false, nil };
+  { "//", {},  false, nil };
+  { "/0", { 17, nil, 23 }, true,  17 };
+  { "/1", { 17, nil, 23 }, true,  nil };
+  { "/2", { 17, nil, 23 }, true,  23 };
+  { "/3", { 17, nil, 23 }, false, nil};
+
+  -- RFC 6901 - 5. JSON String Representation
+  { "",       root, true, root };
+  { "/foo",   root, true, root.foo };
+  { "/foo/0", root, true, "bar" };
+  { "/",      root, true, 0 };
+  { "/a~1b",  root, true, 1 };
+  { "/c%d",   root, true, 2 };
+  { "/e^f",   root, true, 3 };
+  { "/g|h",   root, true, 4 };
+  { "/i\\j",  root, true, 5 };
+  { "/k\"l",  root, true, 6 };
+  { "/ ",     root, true, 7 };
+  { "/m~0n",  root, true, 8 };
+}
+
+for i = 1, #data do
+  local v = data[i]
+  local a, b = pointer(v[1]):get(v[2])
+  assert(a == v[3])
+  assert(b == v[4])
 end
 
-test_get("", root)
-test_get("/foo", root.foo)
-test_get("/foo/0", "bar")
-test_get("/", 0)
-test_get("/a~1b", 1)
-test_get("/c%d", 2)
-test_get("/e^f", 3)
-test_get("/g|h", 4)
-test_get("/i\\j", 5)
-test_get("/k\"l", 6)
-test_get("/ ", 7)
-test_get("/m~0n", 8)
+-- RFC 6902 - A.8. Testing a Value: Success
+local root = { baz = "qux"; foo = { "a", 2, "c" } }
+assert(pointer("/baz"):test(root, "qux"))
+assert(pointer("/foo/1"):test(root, 2))
 
-local root = {}
-print(json.pointer("/3"):get({ 17, nil, 23 }))
+-- RFC 6902 - A.9. Testing a Value: Error
+assert(not pointer("/baz"):test({ baz = "qux" }, "bar"))
 
+-- RFC 6902 - A.14. ~ Escape Ordering
+assert(pointer("/~01"):test({ ["/"] = 9; ["~1"] = 10 }, 10))
 
---[[
-local root = { foo = 17 }
-local result, root = json.pointer(""):add(root, "bar")
-assert(result)
-assert(root == "bar")
+-- RFC 6902 - A.15. Comparing Strings and Numbers
+assert(not pointer("/~01"):test({ ["/"] = 9; ["~1"] = 10 }, "10"))
 
-local root = { foo = 17 }
-local result, root = json.pointer(""):add(root, { bar = 23 })
-assert(result)
-assert(root.foo == nil)
-assert(root.bar == 23)
+local data = {
+  { "", { foo = 17 }, 23, true, 23 };
+  { "", { foo = 17 }, "bar", true, "bar" };
+  { "", { foo = 17 }, { bar = 23 }, true, { bar = 23 } };
+  { "", { foo = 17 }, { 17, nil, 23 }, true, { 17, nil, 23 } };
+  { "/-", {}, 17, true, { 17 } };
+  { "/0", {}, 17, true, { 17 } };
+  { "/1", {}, 17, true, { ["1"] = 17 } };
+  { "/x", {}, 17, true, { x = 17 } };
+  { "/-", { foo = 17 }, 23, true, { foo = 17; ["-"] = 23 } };
+  { "/0", { foo = 17 }, 23, true, { foo = 17; ["0"] = 23 } };
+  { "/x", { foo = 17 }, 23, true, { foo = 17; ["x"] = 23 } };
+  { "/-", { 17, nil, 23 }, 37, true, { 17, nil, 23, 37 } };
+  { "/0", { 17, nil, 23 }, 37, true, { 37, 17, nil, 23 } };
+  { "/1", { 17, nil, 23 }, 37, true, { 17, 37, nil, 23 } };
+  { "/2", { 17, nil, 23 }, 37, true, { 17, nil, 37, 23 } };
+  { "/3", { 17, nil, 23 }, 37, true, { 17, nil, 23, 37 } };
+  { "/4", { 17, nil, 23 }, 37, false };
+  { "/x", { 17, nil, 23 }, 37, false };
+  { "/x/y", { x = {} }, 17, true, { x = { y = 17 } } };
+  { "/x/y/z", { x = { y = {} } }, 17, true, { x = { y = { z = 17 } } } };
 
-local root = { foo = 17 }
-local result, root = json.pointer(""):add(root, { 23, 37 })
-assert(result)
-assert(root.foo == nil)
-assert(#root == 2)
-assert(root[1] == 23)
-assert(root[2] == 37)
+  -- RFC 6902 - A.1. Adding an Object Member
+  { "/baz", { foo = "bar" }, "qux", true, { baz = "qux"; foo = "bar" } };
 
-local root = { foo = 17 }
-assert(json.pointer("/bar"):add(root, 23))
-assert(root.foo == 17)
-assert(root.bar == 23)
+  -- RFC 6902 - A.2. Adding an Array Element
+  { "/foo/1", { foo = { "bar", "baz" } }, "qux", true, { foo = { "bar", "qux", "baz" } } };
 
-local root = { 17, 23 }
-assert(json.pointer("/-"):add(root, 37))
-assert(json.pointer("/1"):add(root, 42))
-assert(#root == 4)
-assert(root[1] == 17)
-assert(root[2] == 42)
-assert(root[3] == 23)
-assert(root[4] == 37)
-]]
+  -- RFC 6902 - A.10. Adding a Nested Member Object
+  { "/child", { foo = "bar" }, { grandchild = {} }, true, { foo = "bar"; child = { grandchild = {} } } };
+
+  -- RFC 6902 - A.12. Adding to a Nonexistent Target
+  { "/baz/bat", { foo = "bar" }, "qux", false };
+
+  -- RFC 6902 - A.16. Adding an Array Value
+  { "/foo/-", { foo = { "bar" } }, { "abc", "def" }, true, { foo = { "bar", { "abc", "def" } } } };
+}
+
+for i = 1, #data do
+  local v = data[i]
+  local a, b = pointer(v[1]):add(v[2], v[3])
+  print(json.encode(v))
+  print(a, json.encode(b), json.encode(v[5]))
+  if v[4] then
+    assert(a)
+    assert(pointer(""):test(b, v[5]))
+  else
+    assert(not a)
+  end
+end
+

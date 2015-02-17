@@ -15,13 +15,9 @@
 -- You should have received a copy of the GNU General Public License
 -- along with dromozoa-json.  If not, see <http://www.gnu.org/licenses/>.
 
-local result, json = pcall(require, "cjson")
-if not result then
-  json = require "dromozoa.json.pure"
+local result, cjson = pcall(require, "cjson")
+if result then
+  return cjson
+else
+  return require "dromozoa.json.pure"
 end
-
-return {
-  encode = json.encode;
-  decode = json.decode;
-  pointer = require "dromozoa.json.pointer";
-}
