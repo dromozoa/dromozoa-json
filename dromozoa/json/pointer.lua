@@ -77,6 +77,38 @@ function evaluate(doc, token, n)
   return true, value
 end
 
+function add(tbl, key, value)
+  local size = is_array(tbl)
+  if size == nil then
+    tbl[key], value = value, tbl[key]
+    return true, value
+  elseif size == 0 then
+    if key == "-" or key == "0" then
+      tbl[1] = value
+      return true
+    else
+      tbl[key], value = value, tbl[key]
+      return true, value
+    end
+  else
+    local index
+    if key == "-" then
+      index = size + 1
+    else
+      index = key_to_index(key)
+    end
+    if 1 <= index and index <= size + 1 then
+      for i = size, index, -1 do
+        tbl[i + 1] = tbl[i]
+      end
+      tbl[index] = value
+      return true
+    else
+      return false
+    end
+  end
+end
+
 local function copy(value, depth)
   if depth > 16 then
     error "too much recursion"
@@ -128,6 +160,9 @@ return function (path)
     return evaluate(doc, token, #token)
   end
 
+  function self:put(doc, value)
+  end
+
   function self:add(doc, value)
     local token = self._token
     local n = #token
@@ -137,7 +172,7 @@ return function (path)
     end
     local a, b = evaluate(doc, token, n - 1)
     if a and type(b) == "table" then
-      local key = self._token[n]
+      local key = token[n]
       local size = is_array(b)
       if size == nil then
         b[key], value = value, b[key]
@@ -182,7 +217,7 @@ return function (path)
     end
     local a, b = evaluate(doc, token, n - 1)
     if type(b) == "table" then
-      local key = self._token[n]
+      local key = token[n]
       local size = is_array(b)
       if size == nil then
         local value = b[key]
