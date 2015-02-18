@@ -1,4 +1,21 @@
-local json = require "dromozoa.json"
+-- Copyright (C) 2015 Tomoyuki Fujimori <moyu@dromozoa.com>
+--
+-- This file is part of dromozoa-json.
+--
+-- dromozoa-json is free software: you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation, either version 3 of the License, or
+-- (at your option) any later version.
+--
+-- dromozoa-json is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU General Public License for more details.
+--
+-- You should have received a copy of the GNU General Public License
+-- along with dromozoa-json.  If not, see <http://www.gnu.org/licenses/>.
+
+local json = require "dromozoa.json.pure"
 local pointer = require "dromozoa.json.pointer"
 
 local root = {
@@ -211,3 +228,47 @@ local root = { foo = 17 }
 local doc = { root }
 assert(pointer("/bar"):copy(doc, pointer("")))
 assert(pointer(""):test(doc, { foo = 17; bar = { foo = 17 } }))
+
+local data = {
+  { "", { foo = 17 }, 23, true, 23 };
+  { "", { foo = 17 }, "bar", true, "bar" };
+  { "", { foo = 17 }, { bar = 23 }, true, { bar = 23 } };
+  { "", { foo = 17 }, { 17, nil, 23 }, true, { 17, nil, 23 } };
+  { "/-", {}, 17, true, { ["-"] = 17 } };
+  { "/0", {}, 17, true, { 17 } };
+  { "/1", {}, 17, true, { ["1"] = 17 } };
+  { "/x", {}, 17, true, { x = 17 } };
+  { "/-", { foo = 17 }, 23, true, { foo = 17; ["-"] = 23 } };
+  { "/0", { foo = 17 }, 23, true, { foo = 17; ["0"] = 23 } };
+  { "/x", { foo = 17 }, 23, true, { foo = 17; ["x"] = 23 } };
+  { "/-", { 17, nil, 23 }, 37, false };
+  { "/0", { 17, nil, 23 }, 37, true, { 37, nil, 23 } };
+  { "/1", { 17, nil, 23 }, 37, true, { 17, 37, 23 } };
+  { "/2", { 17, nil, 23 }, 37, true, { 17, nil, 37 } };
+  { "/3", { 17, nil, 23 }, 37, true, { 17, nil, 23, 37 } };
+  { "/4", { 17, nil, 23 }, 37, false };
+  { "/x", { 17, nil, 23 }, 37, false };
+  { "/x/y/z", nil, 17, true, { x = { y = { z = 17 } } } };
+  { "/x/y/z", {}, 17, true, { x = { y = { z = 17 } } } };
+  { "/x/y/z", { x = {} }, 17, true, { x = { y = { z = 17 } } } };
+  { "/x/y/z", { x = { y = {} } }, 17, true, { x = { y = { z = 17 } } } };
+  { "/0/0/0", nil, 17, true, { { { 17 } } } };
+  { "/0/0/0", {}, 17, true, { { { 17 } } } };
+  { "/0/0/0", { {} }, 17, true, { { { 17 } } } };
+  { "/0/0/0", { { {} } }, 17, true, { { { 17 } } } };
+  { "/1/2/3", nil, 17, true, { ["1"] = { ["2"] = { ["3"] = 17 } } } };
+}
+
+for i = 1, #data do
+  local v = data[i]
+  local doc = { v[2] }
+  for j = 1, 2 do -- check idempotency
+    local a = pointer(v[1]):put(doc, v[3])
+    if v[4] then
+      assert(a)
+      assert(pointer(""):test(doc, v[5]))
+    else
+      assert(not a)
+    end
+  end
+end

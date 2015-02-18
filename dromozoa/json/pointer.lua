@@ -128,6 +128,61 @@ return function (path)
     return evaluate(doc, token, #token)
   end
 
+  function self:put(doc, value)
+    local token = self._token
+    local n = #token
+    if n == 0 then
+      doc[1] = value
+      return true
+    end
+    if doc[1] == nil then
+      doc[1] = {}
+    end
+    local this = doc[1]
+    for i = 1, n - 1 do
+      if type(this) == "table" then
+        local size = is_array(this)
+        local key = token[i]
+        if size == nil or size == 0 and key ~= "0" then
+          if this[key] == nil then
+            this[key] = {}
+          end
+          this = this[key]
+        else
+          local index = key_to_index(key)
+          if 1 <= index and index <= size + 1 then
+            if this[index] == nil then
+              this[index] = {}
+            end
+            this = this[index]
+          else
+            return false
+          end
+        end
+      else
+        return false
+      end
+    end
+    if type(this) == "table" then
+      local key = token[n]
+      local size = is_array(this)
+      if size == nil or size == 0 and key ~= "0" then
+        this[key] = value
+        return true
+      else
+        local index = key_to_index(key)
+        if 1 <= index and index <= size + 1 then
+          this[index] = value
+          return true
+        else
+          return false
+        end
+      end
+    else
+      return false
+    end
+  end
+
   function self:add(doc, value)
     local token = self._token
     local n = #token
@@ -137,19 +192,11 @@ return function (path)
     end
     local a, b = evaluate(doc, token, n - 1)
     if a and type(b) == "table" then
-      local key = self._token[n]
+      local key = token[n]
       local size = is_array(b)
-      if size == nil then
+      if size == nil or size == 0 and key ~= "0" and key ~= "-" then
         b[key], value = value, b[key]
         return true, value
-      elseif size == 0 then
-        if key == "-" or key == "0" then
-          b[1] = value
-          return true
-        else
-          b[key], value = value, b[key]
-          return true, value
-        end
       else
         local index
         if key == "-" then
@@ -182,7 +229,7 @@ return function (path)
     end
     local a, b = evaluate(doc, token, n - 1)
     if type(b) == "table" then
-      local key = self._token[n]
+      local key = token[n]
       local size = is_array(b)
       if size == nil then
         local value = b[key]
