@@ -143,23 +143,11 @@ return function (path)
       if type(this) == "table" then
         local size = is_array(this)
         local key = token[i]
-        if size == nil then
+        if size == nil or size == 0 and key ~= "0" then
           if this[key] == nil then
             this[key] = {}
           end
           this = this[key]
-        elseif size == 0 then
-          if key == "0" then
-            if this[1] == nil then
-              this[1] = {}
-            end
-            this = this[1]
-          else
-            if this[key] == nil then
-              this[key] = {}
-            end
-            this = this[key]
-          end
         else
           local index = key_to_index(key)
           if 1 <= index and index <= size + 1 then
@@ -178,17 +166,9 @@ return function (path)
     if type(this) == "table" then
       local key = token[n]
       local size = is_array(this)
-      if size == nil then
+      if size == nil or size == 0 and key ~= "0" then
         this[key] = value
         return true
-      elseif size == 0 then
-        if key == "0" then
-          this[1] = value
-          return true
-        else
-          this[key] = value
-          return true
-        end
       else
         local index = key_to_index(key)
         if 1 <= index and index <= size + 1 then
@@ -214,17 +194,9 @@ return function (path)
     if a and type(b) == "table" then
       local key = token[n]
       local size = is_array(b)
-      if size == nil then
+      if size == nil or size == 0 and key ~= "0" and key ~= "-" then
         b[key], value = value, b[key]
         return true, value
-      elseif size == 0 then
-        if key == "-" or key == "0" then
-          b[1] = value
-          return true
-        else
-          b[key], value = value, b[key]
-          return true, value
-        end
       else
         local index
         if key == "-" then

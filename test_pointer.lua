@@ -245,11 +245,10 @@ local data = {
 for i = 1, #data do
   local v = data[i]
   local doc = { v[2] }
-  for j = 1, 2 do
+  for j = 1, 2 do -- check idempotency
     local a = pointer(v[1]):put(doc, v[3])
     if v[4] then
       assert(a)
-      print(json.encode(doc[1]))
       assert(pointer(""):test(doc, v[5]))
     else
       assert(not a)
