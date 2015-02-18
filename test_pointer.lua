@@ -1,4 +1,4 @@
-local json = require "dromozoa.json"
+local json = require "dromozoa.json.pure"
 local pointer = require "dromozoa.json.pointer"
 
 local root = {
