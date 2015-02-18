@@ -77,38 +77,6 @@ function evaluate(doc, token, n)
   return true, value
 end
 
-function add(tbl, key, value)
-  local size = is_array(tbl)
-  if size == nil then
-    tbl[key], value = value, tbl[key]
-    return true, value
-  elseif size == 0 then
-    if key == "-" or key == "0" then
-      tbl[1] = value
-      return true
-    else
-      tbl[key], value = value, tbl[key]
-      return true, value
-    end
-  else
-    local index
-    if key == "-" then
-      index = size + 1
-    else
-      index = key_to_index(key)
-    end
-    if 1 <= index and index <= size + 1 then
-      for i = size, index, -1 do
-        tbl[i + 1] = tbl[i]
-      end
-      tbl[index] = value
-      return true
-    else
-      return false
-    end
-  end
-end
-
 local function copy(value, depth)
   if depth > 16 then
     error "too much recursion"
@@ -161,6 +129,78 @@ return function (path)
   end
 
   function self:put(doc, value)
+    local token = self._token
+    local n = #token
+    if n == 0 then
+      doc[1] = value
+      return true
+    end
+    if doc[1] == nil then
+      doc[1] = {}
+    end
+    local this = doc[1]
+    for i = 1, n - 1 do
+      if type(this) == "table" then
+        local size = is_array(this)
+        local key = token[i]
+        if size == nil then
+          if this[key] == nil then
+            this[key] = {}
+          end
+          this = this[key]
+        elseif size == 0 then
+          if key == "0" then
+            if this[1] == nil then
+              this[1] = {}
+            end
+            this = this[1]
+          else
+            if this[key] == nil then
+              this[key] = {}
+            end
+            this = this[key]
+          end
+        else
+          local index = key_to_index(key)
+          if 1 <= index and index <= size + 1 then
+            if this[index] == nil then
+              this[index] = {}
+            end
+            this = this[index]
+          else
+            return false
+          end
+        end
+      else
+        return false
+      end
+    end
+    if type(this) == "table" then
+      local key = token[n]
+      local size = is_array(this)
+      if size == nil then
+        this[key] = value
+        return true
+      elseif size == 0 then
+        if key == "0" then
+          this[1] = value
+          return true
+        else
+          this[key] = value
+          return true
+        end
+      else
+        local index = key_to_index(key)
+        if 1 <= index and index <= size + 1 then
+          this[index] = value
+          return true
+        else
+          return false
+        end
+      end
+    else
+      return false
+    end
   end
 
   function self:add(doc, value)

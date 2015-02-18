@@ -211,3 +211,48 @@ local root = { foo = 17 }
 local doc = { root }
 assert(pointer("/bar"):copy(doc, pointer("")))
 assert(pointer(""):test(doc, { foo = 17; bar = { foo = 17 } }))
+
+local data = {
+  { "", { foo = 17 }, 23, true, 23 };
+  { "", { foo = 17 }, "bar", true, "bar" };
+  { "", { foo = 17 }, { bar = 23 }, true, { bar = 23 } };
+  { "", { foo = 17 }, { 17, nil, 23 }, true, { 17, nil, 23 } };
+  { "/-", {}, 17, true, { ["-"] = 17 } };
+  { "/0", {}, 17, true, { 17 } };
+  { "/1", {}, 17, true, { ["1"] = 17 } };
+  { "/x", {}, 17, true, { x = 17 } };
+  { "/-", { foo = 17 }, 23, true, { foo = 17; ["-"] = 23 } };
+  { "/0", { foo = 17 }, 23, true, { foo = 17; ["0"] = 23 } };
+  { "/x", { foo = 17 }, 23, true, { foo = 17; ["x"] = 23 } };
+  { "/-", { 17, nil, 23 }, 37, false };
+  { "/0", { 17, nil, 23 }, 37, true, { 37, nil, 23 } };
+  { "/1", { 17, nil, 23 }, 37, true, { 17, 37, 23 } };
+  { "/2", { 17, nil, 23 }, 37, true, { 17, nil, 37 } };
+  { "/3", { 17, nil, 23 }, 37, true, { 17, nil, 23, 37 } };
+  { "/4", { 17, nil, 23 }, 37, false };
+  { "/x", { 17, nil, 23 }, 37, false };
+  { "/x/y/z", nil, 17, true, { x = { y = { z = 17 } } } };
+  { "/x/y/z", {}, 17, true, { x = { y = { z = 17 } } } };
+  { "/x/y/z", { x = {} }, 17, true, { x = { y = { z = 17 } } } };
+  { "/x/y/z", { x = { y = {} } }, 17, true, { x = { y = { z = 17 } } } };
+  { "/0/0/0", nil, 17, true, { { { 17 } } } };
+  { "/0/0/0", {}, 17, true, { { { 17 } } } };
+  { "/0/0/0", { {} }, 17, true, { { { 17 } } } };
+  { "/0/0/0", { { {} } }, 17, true, { { { 17 } } } };
+  { "/1/2/3", nil, 17, true, { ["1"] = { ["2"] = { ["3"] = 17 } } } };
+}
+
+for i = 1, #data do
+  local v = data[i]
+  local doc = { v[2] }
+  for j = 1, 2 do
+    local a = pointer(v[1]):put(doc, v[3])
+    if v[4] then
+      assert(a)
+      print(json.encode(doc[1]))
+      assert(pointer(""):test(doc, v[5]))
+    else
+      assert(not a)
+    end
+  end
+end
