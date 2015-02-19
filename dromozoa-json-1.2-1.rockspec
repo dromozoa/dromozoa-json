@@ -18,6 +18,7 @@ build = {
   modules = {
     ["dromozoa.json"] = "dromozoa/json.lua";
     ["dromozoa.json.is_array"] = "dromozoa/json/is_array.lua";
+    ["dromozoa.json.patch"] = "dromozoa/json/patch.lua";
     ["dromozoa.json.pointer"] = "dromozoa/json/pointer.lua";
     ["dromozoa.json.pure"] = "dromozoa/json/pure.lua";
   };
